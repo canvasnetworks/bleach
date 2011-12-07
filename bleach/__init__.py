@@ -1,6 +1,8 @@
+import itertools
 import logging
 import re
 import sys
+import urlparse
 
 import html5lib
 from html5lib.sanitizer import HTMLSanitizer
@@ -10,7 +12,7 @@ from encoding import force_unicode
 from sanitizer import BleachSanitizer
 
 
-VERSION = (1, 0, 4)
+VERSION = (1, 1, 0)
 __version__ = '.'.join(map(str, VERSION))
 
 __all__ = ['clean', 'linkify']
@@ -144,7 +146,7 @@ def linkify(text, nofollow=True, target=None, filter_url=identity,
     forest = parser.parseFragment(text)
 
     if nofollow:
-        rel = u' rel="nofollow"'
+        rel = u'rel="nofollow"'
     else:
         rel = u''
 
@@ -242,19 +244,89 @@ def linkify(text, nofollow=True, target=None, filter_url=identity,
         else:
             href = u''.join([u'http://', url])
 
-        repl = u'%s<a href="%s"%s>%s</a>%s%s'
+        repl = u'%s<a href="%s" %s>%s</a>%s%s'
+
+        attribs = [rel]
+        if target is not None:
+            attribs.append('target="%s"' % target)
 
         attribs = [rel]
         if target is not None:
             attribs.append('target="%s"' % target)
 
         return repl % ('(' * open_brackets,
-                       filter_url(href), ''.join(attribs), filter_text(url), end,
-                       ')' * close_brackets)
+                       filter_url(href), ' '.join(attribs), filter_text(url),
+                       end, ')' * close_brackets)
 
     linkify_nodes(forest)
 
     return _render(forest)
+
+
+def delinkify(text, allow_domains=None, allow_relative=False):
+    """Remove links from text, except those allowed to stay."""
+    text = force_unicode(text)
+    if not text:
+        return u''
+
+    parser = html5lib.HTMLParser(tokenizer=HTMLSanitizer)
+    forest = parser.parseFragment(text)
+
+    if allow_domains is None:
+        allow_domains = []
+    elif isinstance(allow_domains, basestring):
+        allow_domains = [allow_domains]
+
+    def delinkify_nodes(tree):
+        """Remove <a> tags and replace them with their contents."""
+        for node in tree.childNodes:
+            if node.name == 'a':
+                if 'href' not in node.attributes:
+                    continue
+                parts = urlparse.urlparse(node.attributes['href'])
+                host = parts.hostname
+                if any(_domain_match(host, d) for d in allow_domains):
+                    continue
+                if host is None and allow_relative:
+                    continue
+                # Replace the node with its children.
+                # You can't nest <a> tags, and html5lib takes care of that
+                # for us in the tree-building step.
+                for n in node.childNodes:
+                    tree.insertBefore(n, node)
+                tree.removeChild(node)
+            elif node.type != NODE_TEXT: # Don't try to delinkify text.
+                delinkify_nodes(node)
+
+    delinkify_nodes(forest)
+    return _render(forest)
+
+
+def _domain_match(test, compare):
+    test = test.lower()
+    compare = compare.lower()
+    if '*' not in compare:
+        return test == compare
+    c = compare.split('.')[::-1]
+    if '**' in c and (c.count('**') > 1 or not compare.startswith('**')):
+        raise ValidationError(
+            'Only 1 ** is allowed, and must start the domain.')
+    t = test.split('.')[::-1]
+    z = itertools.izip_longest(c, t)
+    for c, t in z:
+        if c == t:
+            continue
+        elif c == '*':
+            continue
+        elif c == '**':
+            return True
+        return False
+    # Got all the way through and everything matched.
+    return True
+
+
+class ValidationError(ValueError):
+    pass
 
 
 def _render(tree):

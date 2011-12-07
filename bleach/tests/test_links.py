@@ -297,14 +297,13 @@ def test_ports():
 
 
 def test_target():
-    '''Tests the `target` kwarg.'''
+    eq_('<a href="http://example.com" rel="nofollow" '
+        'target="_blank">example.com</a>',
+        linkify(u'example.com', target='_blank'))
     eq_('<a href="http://example.com" target="_blank">example.com</a>',
-        linkify(u'example.com', nofollow=False, target='_blank'))
-    eq_('<a href="http://example.com">example.com</a>',
-        linkify(u'example.com', nofollow=False, target=None))
+        linkify(u'example.com', target='_blank', nofollow=False))
 
 def test_skip_existing_links():
     '''Tests the `skip_existing_links` kwarg.'''
     html = u'<a href="http://foo.com" title="huh"></a>'
     eq_(html, linkify(html, skip_existing_links=True))
-
