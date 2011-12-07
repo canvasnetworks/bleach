@@ -303,6 +303,12 @@ def test_target():
     eq_('<a href="http://example.com" target="_blank">example.com</a>',
         linkify(u'example.com', target='_blank', nofollow=False))
 
+def test_ignore_bad_protocols():
+    eq_('foohttp://bar',
+        linkify('foohttp://bar'))
+    eq_('foohttp://<a href="http://example.com" rel="nofollow">example.com</a>',
+        linkify('foohttp://example.com'))
+
 def test_skip_existing_links():
     '''Tests the `skip_existing_links` kwarg.'''
     html = u'<a href="http://foo.com" title="huh"></a>'
